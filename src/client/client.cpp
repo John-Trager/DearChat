@@ -1,4 +1,5 @@
 #include "client.h"
+#include "messaging.h"
 
 #include <zmq.hpp>
 #include <zmq.h>
@@ -17,6 +18,7 @@ Client::Client(const std::string& address, const std::string& id)
 {
     d_sender.bind(s_inprocAddr);
     d_agentThread = std::thread(&Client::agent, this);
+    ClientConnectionRequest connectionRequest;
 }
 
 Client::~Client() {
@@ -33,11 +35,6 @@ Client::~Client() {
 }
 
 void Client::send(const std::string& message) {
-    /*
-    [message type] 1st packet TODO: use multipart message
-    [message] 2nd packet
-    */
-
     // dont allow empty messages to be sent
     if (message.empty()) {
        return;
@@ -51,7 +48,16 @@ void Client::send(const std::string& message) {
     }
    */
 
-    zmq::message_t msg_t(message);
+    ClientChatMessage chatMessage{message};
+    ClientBaseMessage baseMessage{d_clientId, chatMessage};
+    auto serialized = serialize_clientbasemsg(baseMessage);
+
+    if (!serialized.has_value()) {
+        spdlog::warn("Failed to serialize message in Client::send");
+        return;
+    }
+
+    zmq::message_t msg_t(*serialized);
     auto res = d_sender.send(msg_t, zmq::send_flags::none);
     if (!res.has_value()) {
         spdlog::warn("Failed to send message on sender");
@@ -109,11 +115,26 @@ void Client::agent() {
                     continue;
                 }
 
-                spdlog::debug("Received message from server: {}", message.to_string());
+                auto baseMessage = deserialize_serverbasemsg(message.to_string());
+                if (!baseMessage.has_value()) {
+                    spdlog::warn("Failed to deserialize server base message in Client::agent");
+                    continue;
+                }
 
-                std::string messageLine = "[Anon] " + message.to_string();
+                auto& payload = baseMessage->payload;
+                if (std::holds_alternative<ServerChatMessage>(payload)) {
+                    auto& message = std::get<ServerChatMessage>(payload);
+                    spdlog::debug("Received message from server: {}", message.message);
 
-                console.AddLog(messageLine);
+                    std::string messageLine = "[" + message.senderId + "] " + message.message;
+
+                    console.AddLog(messageLine);
+                } else if (std::holds_alternative<ServerConnectionResponse>(payload)) {
+                    auto& message = std::get<ServerConnectionResponse>(payload);
+                } else {
+                    spdlog::warn("Received unknown message type from server");
+                }
+
             } // end if
         } // end for
 

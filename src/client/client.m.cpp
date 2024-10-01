@@ -5,6 +5,12 @@
 #include <string>
 #include <zmq.hpp>
 
+/*
+Allows client to send messages to the server
+
+but only see replies through spdlog debug messages
+*/
+
 int main(int argc, const char *argv[]){
 
     // set the log level to debug (globally)
@@ -25,7 +31,6 @@ int main(int argc, const char *argv[]){
         std::getline(std::cin, message);
         client.send(message);
     }
-
 
     return 0;
 }

@@ -13,22 +13,36 @@ void Server::run() {
     while (true) {
         auto msg = receiveMessage();
         if (!msg.has_value()) {
-            spdlog::warn("Failed to receive message");
             continue;
         }
-        
-        if (!d_clients.contains(msg->id)) {
-            d_clients.insert(msg->id);
-            spdlog::info("New client connected: {}", msg->id);
+
+        if (!std::holds_alternative<ClientChatMessage>(msg->payload)) {
+            spdlog::info("received message type other than Chat Message, skipping as not implemented");
+            continue;
         }
 
-        spdlog::info("Received message: [{}] {}", msg->id, msg->message);
+        auto chatMsg = std::get<ClientChatMessage>(msg->payload);
         
-        broadcastMessage(*msg);
+        // TODO: later handle this as part of a connection request
+        if (!d_clients.contains(msg->senderId)) {
+            d_clients.insert(msg->senderId);
+            spdlog::info("New client connected: {}", msg->senderId);
+            broadcastNewConnection(msg->senderId);
+        }
+
+        spdlog::info("Received message: [{}] {}", msg->senderId, chatMsg.message);
+
+        ServerChatMessage serverMsg{msg->senderId, chatMsg.message}; 
+        broadcastMessage(serverMsg);
     }
 }
 
-std::optional<Message> Server::receiveMessage() {
+void Server::broadcastNewConnection(const std::string& id) {
+    ServerChatMessage serverMsg{"ALERT", "New client connected: " + id};
+    broadcastMessage(serverMsg);
+}
+
+std::optional<ClientBaseMessage> Server::receiveMessage() {
     zmq::message_t id;
     zmq::message_t msg;
     
@@ -43,17 +57,36 @@ std::optional<Message> Server::receiveMessage() {
     }
 
     std::string idStr = std::string(static_cast<char*>(id.data()), id.size());
-    std::string msgStr = std::string(static_cast<char*>(msg.data()), msg.size());
-    return Message{idStr, msgStr};
+    std::string data = std::string(static_cast<char*>(msg.data()), msg.size());
+
+    auto clientBaseMsg = deserialize_clientbasemsg(data);
+    if (!clientBaseMsg.has_value()) {
+        spdlog::warn("Failed to deserialize client base message in Server::receiveMessage");
+        return std::nullopt;
+    }
+    else if (clientBaseMsg->senderId != idStr) {
+        spdlog::warn("Sender ID does not match ID in message");
+        return std::nullopt;
+    }
+
+    return clientBaseMsg;
 }
 
-void Server::broadcastMessage(const Message& message) {
+void Server::broadcastMessage(const ServerChatMessage& message) {
+    // may be a better spot elsewhere for serializing
+    ServerBaseMessage baseMessage{message};
+    auto serialized = serialize_serverbasemsg(baseMessage);
+    if (!serialized.has_value()) {
+        spdlog::warn("Failed to serialize message in Server::broadcastMessage");
+        return;
+    }
+
     for (const auto& client : d_clients) {
-        if (client == message.id) {
+        if (client == message.senderId) {
             continue;
         }
         zmq::message_t id(client);
-        zmq::message_t msg(message.message);
+        zmq::message_t msg(*serialized);
         routerSocket.send(id, zmq::send_flags::sndmore);
         routerSocket.send(msg, zmq::send_flags::none);
     }

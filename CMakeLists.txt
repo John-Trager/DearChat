@@ -90,6 +90,11 @@ endif()
 add_library(zpp_bits INTERFACE)
 target_include_directories(zpp_bits INTERFACE src/lib/zpp_bits)
 
+# library for the lib folder
+add_library(lib INTERFACE)
+target_include_directories(lib INTERFACE src/lib)
+target_link_libraries(lib INTERFACE zpp_bits)
+
 ### LOCAL CODE FILES ###
 
 ## exchange
@@ -102,7 +107,7 @@ target_include_directories(server_lib
     PUBLIC
     ${PROJECT_SOURCE_DIR}/src/server
 )
-target_link_libraries(server_lib PUBLIC spdlog::spdlog cppzmq zpp_bits)
+target_link_libraries(server_lib PUBLIC spdlog::spdlog cppzmq lib)
 
 add_executable(server src/server/server.m.cpp)
 target_link_libraries(server PRIVATE server_lib)
@@ -118,7 +123,7 @@ target_include_directories(client_lib
     ${PROJECT_SOURCE_DIR}/src/client
 )
 # TODO: remove orderbook_lib from client as only need the order.h class
-target_link_libraries(client_lib PUBLIC spdlog::spdlog cppzmq zpp_bits imgui glfw3 OpenGL::GL)
+target_link_libraries(client_lib PUBLIC spdlog::spdlog cppzmq lib imgui glfw3 OpenGL::GL)
 
 add_executable(client src/client/client.m.cpp ${IMGUI_SRC})
 target_link_libraries(client PRIVATE client_lib)
