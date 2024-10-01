@@ -16,24 +16,27 @@ void Server::run() {
             continue;
         }
 
-        if (!std::holds_alternative<ClientChatMessage>(msg->payload)) {
-            spdlog::info("received message type other than Chat Message, skipping as not implemented");
-            continue;
+        if (std::holds_alternative<ClientChatMessage>(msg->payload)) {
+            auto chatMsg = std::get<ClientChatMessage>(msg->payload);
+
+            spdlog::info("Received message: [{}] {}", msg->senderId, chatMsg.message);
+
+            ServerChatMessage serverMsg{msg->senderId, chatMsg.message}; 
+            broadcastMessage(serverMsg);
+        } else if (std::holds_alternative<ClientConnectionRequest>(msg->payload)) {
+            if (!d_clients.contains(msg->senderId)) {
+                spdlog::info("New client connected: {}", msg->senderId);       
+                broadcastNewConnection(msg->senderId);
+                // by putting this after broadcastNewConnection
+                // we ensure that the new client won't receive
+                // the new connection message
+                d_clients.insert(msg->senderId);
+            }
+
+            // in this case we don't care if a client is sending a duplicate connection request
+            // we will let them "connect" anyway
+            sendConnectionResponse(msg->senderId, true, std::nullopt);
         }
-
-        auto chatMsg = std::get<ClientChatMessage>(msg->payload);
-        
-        // TODO: later handle this as part of a connection request
-        if (!d_clients.contains(msg->senderId)) {
-            d_clients.insert(msg->senderId);
-            spdlog::info("New client connected: {}", msg->senderId);
-            broadcastNewConnection(msg->senderId);
-        }
-
-        spdlog::info("Received message: [{}] {}", msg->senderId, chatMsg.message);
-
-        ServerChatMessage serverMsg{msg->senderId, chatMsg.message}; 
-        broadcastMessage(serverMsg);
     }
 }
 
@@ -90,4 +93,19 @@ void Server::broadcastMessage(const ServerChatMessage& message) {
         routerSocket.send(id, zmq::send_flags::sndmore);
         routerSocket.send(msg, zmq::send_flags::none);
     }
+}
+
+void Server::sendConnectionResponse(const std::string& id, bool accepted, const std::optional<std::string>& reason) {
+    ServerConnectionResponse response{accepted, reason};
+    ServerBaseMessage baseMessage{response};
+    auto serialized = serialize_serverbasemsg(baseMessage);
+    if (!serialized.has_value()) {
+        spdlog::error("Failed to serialize message in Server::sendConnectionResponse");
+        return;
+    }
+
+    zmq::message_t idMsg(id);
+    zmq::message_t msg(*serialized);
+    routerSocket.send(idMsg, zmq::send_flags::sndmore);
+    routerSocket.send(msg, zmq::send_flags::none);
 }

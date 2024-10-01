@@ -34,6 +34,26 @@ Client::~Client() {
     d_context.close();
 }
 
+void Client::connectToServer() {
+    ClientConnectionRequest connectionRequest;
+    ClientBaseMessage baseMessage{d_clientId, connectionRequest};
+    auto serialized = serialize_clientbasemsg(baseMessage);
+
+    if (!serialized.has_value()) {
+        spdlog::warn("Failed to serialize message in Client::connectToServer");
+        return;
+    }
+
+    zmq::message_t msg_t(*serialized);
+    auto res = d_sender.send(msg_t, zmq::send_flags::none);
+    if (!res.has_value()) {
+        spdlog::warn("Failed to send message on dealer (from connectToServer)");
+    }
+
+    // TODO: later have some lock or CV that waits to get response from server
+    // Would handle inside the agent
+}
+
 void Client::send(const std::string& message) {
     // dont allow empty messages to be sent
     if (message.empty()) {
@@ -131,6 +151,14 @@ void Client::agent() {
                     console.AddLog(messageLine);
                 } else if (std::holds_alternative<ServerConnectionResponse>(payload)) {
                     auto& message = std::get<ServerConnectionResponse>(payload);
+                    if (message.accepted) {
+                        spdlog::info("Connection accepted by server");
+                        console.AddLog("--- Connection accepted by server ---"); 
+                    } else {
+                        spdlog::warn("Connection rejected by server: {}", message.reason.value_or("No reason given"));
+                        console.AddLog("--- Connection to server Refused! ---"); 
+                        console.AddLog(message.reason.value_or("Server Reason: No reason given"));
+                    }
                 } else {
                     spdlog::warn("Received unknown message type from server");
                 }

@@ -28,6 +28,7 @@ int main(int argc, const char *argv[]){
     }
 
     Client client("tcp://localhost:8888", client_id);
+    client.connectToServer(); // sends connection request
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -37,7 +38,7 @@ int main(int argc, const char *argv[]){
     std::string glsl_version = setGLFWHints();
 
     // Create window with graphics context
-    GLFWwindow *window = createWindow(720, 540, "Message");
+    GLFWwindow *window = createWindow(720, 540, "DearChat [" + client_id + "]");
     if (window == nullptr)
         return 1;
 

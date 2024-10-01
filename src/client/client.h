@@ -18,6 +18,8 @@ public:
     ~Client();
 
     void send(const std::string& message);
+
+    void connectToServer();
     
     void agent();
     

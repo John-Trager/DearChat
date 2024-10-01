@@ -20,6 +20,7 @@ public:
 
 
     void broadcastNewConnection(const std::string& id);
+    void sendConnectionResponse(const std::string& id, bool accepted, const std::optional<std::string>& reason);
 
     std::optional<ClientBaseMessage> receiveMessage();
     void broadcastMessage(const ServerChatMessage& message);
