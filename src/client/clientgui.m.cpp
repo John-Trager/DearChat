@@ -28,7 +28,7 @@ int main(int argc, const char *argv[]){
     }
 
     Client client("tcp://localhost:8888", client_id);
-    client.connectToServer(); // sends connection request
+    client.connectToServer("general");
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())

@@ -24,12 +24,27 @@ int main(int argc, const char *argv[]){
     std::cin >> client_id;
 
     Client client("tcp://localhost:8888", client_id);
+    client.connectToServer("general");
 
     while (true) {
         std::string message;
         std::cout << "Enter message: ";
         std::getline(std::cin, message);
-        client.send(message);
+
+        // if message is in the format "/join <room_id>" then join the room
+        if (message.find("/join") == 0) {
+            // get the room id
+            std::string roomId = message.substr(6);
+            client.connectToServer(roomId);
+
+        } else if (message.find("/create") == 0) {
+            std::string roomId = message.substr(8);
+            client.sendCreateRoomRequest(roomId);
+        } else if (message == "/exit") {
+            break;
+        } else { 
+            client.send(message);
+        }
     }
 
     return 0;

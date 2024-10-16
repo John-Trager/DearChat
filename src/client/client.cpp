@@ -18,7 +18,6 @@ Client::Client(const std::string& address, const std::string& id)
 {
     d_sender.bind(s_inprocAddr);
     d_agentThread = std::thread(&Client::agent, this);
-    ClientConnectionRequest connectionRequest;
 }
 
 Client::~Client() {
@@ -34,8 +33,8 @@ Client::~Client() {
     d_context.close();
 }
 
-void Client::connectToServer() {
-    ClientConnectionRequest connectionRequest;
+void Client::connectToServer(const std::string& roomId) {
+    ClientConnectionRequest connectionRequest = {roomId};
     ClientBaseMessage baseMessage{d_clientId, connectionRequest};
     auto serialized = serialize_clientbasemsg(baseMessage);
 
@@ -52,6 +51,26 @@ void Client::connectToServer() {
 
     // TODO: later have some lock or CV that waits to get response from server
     // Would handle inside the agent
+    console.AddLog("--- Requested connection to room: " + connectionRequest.roomId + " ---");
+}
+
+void Client::sendCreateRoomRequest(const std::string& roomId) {
+    ClientCreateRoomRequest createRoomRequest{roomId};
+    ClientBaseMessage baseMessage{d_clientId, createRoomRequest};
+    auto serialized = serialize_clientbasemsg(baseMessage);
+
+    if (!serialized.has_value()) {
+        spdlog::warn("Failed to serialize message in Client::sendCreateRoomRequest");
+        return;
+    }
+
+    zmq::message_t msg_t(*serialized);
+    auto res = d_sender.send(msg_t, zmq::send_flags::none);
+    if (!res.has_value()) {
+        spdlog::warn("Failed to send message on dealer (from sendCreateRoomRequest)");
+    }
+
+    console.AddLog("--- Requested creation of room: " + createRoomRequest.roomId + " ---");
 }
 
 void Client::send(const std::string& message) {
@@ -59,14 +78,6 @@ void Client::send(const std::string& message) {
     if (message.empty()) {
        return;
     }
-
-   /*
-    zmq::message_t msg_type_t("SEND");
-    auto res = d_sender.send(msg_type_t, zmq::send_flags::sndmore);
-    if (!res.has_value()) {
-        spdlog::warn("Failed to send message type on sender");
-    }
-   */
 
     ClientChatMessage chatMessage{message};
     ClientBaseMessage baseMessage{d_clientId, chatMessage};
@@ -157,6 +168,16 @@ void Client::agent() {
                     } else {
                         spdlog::warn("Connection rejected by server: {}", message.reason.value_or("No reason given"));
                         console.AddLog("--- Connection to server Refused! ---"); 
+                        console.AddLog(message.reason.value_or("Server Reason: No reason given"));
+                    }
+                } else if (std::holds_alternative<ServerCreateRoomResponse>(payload)) {
+                    auto& message = std::get<ServerCreateRoomResponse>(payload);
+                    if (message.accepted) {
+                        spdlog::info("Room creation accepted by server");
+                        console.AddLog("--- Room creation accepted by server ---"); 
+                    } else {
+                        spdlog::warn("Room creation rejected by server: {}", message.reason.value_or("No reason given"));
+                        console.AddLog("--- Room creation Refused! ---"); 
                         console.AddLog(message.reason.value_or("Server Reason: No reason given"));
                     }
                 } else {

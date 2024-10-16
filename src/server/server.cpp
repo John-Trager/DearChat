@@ -8,7 +8,6 @@ Server::Server(const std::string& address)
     routerSocket.bind(address);
 }
 
-
 void Server::run() {
     while (true) {
         auto msg = receiveMessage();
@@ -17,28 +16,97 @@ void Server::run() {
         }
 
         if (std::holds_alternative<ClientChatMessage>(msg->payload)) {
-            auto chatMsg = std::get<ClientChatMessage>(msg->payload);
-
-            spdlog::info("Received message: [{}] {}", msg->senderId, chatMsg.message);
-
-            ServerChatMessage serverMsg{msg->senderId, chatMsg.message}; 
-            broadcastMessage(serverMsg);
+            handleClientChatMessage(*msg);
         } else if (std::holds_alternative<ClientConnectionRequest>(msg->payload)) {
-            if (!d_clients.contains(msg->senderId)) {
-                spdlog::info("New client connected: {}", msg->senderId);       
-                broadcastNewConnection(msg->senderId);
-                // by putting this after broadcastNewConnection
-                // we ensure that the new client won't receive
-                // the new connection message
-                d_clients.insert(msg->senderId);
-            }
-
-            // in this case we don't care if a client is sending a duplicate connection request
-            // we will let them "connect" anyway
-            sendConnectionResponse(msg->senderId, true, std::nullopt);
+            handleClientConnectionRequest(*msg);
+        } else if (std::holds_alternative<ClientCreateRoomRequest>(msg->payload)) {
+            handleClientCreateRoomRequest(*msg);
+        } else {
+            spdlog::warn("Received unknown message type");
         }
     }
 }
+
+void Server::createRoom(const std::string& room_id) {
+    if (validRoomId(room_id)) {
+        spdlog::error("Attempted to create room that already exists: {}", room_id);
+        return;
+    }
+
+    d_rooms[room_id] = Room{};
+}
+
+// BUSINESS LOGIC FUNCTIONS
+void Server::handleClientChatMessage(const ClientBaseMessage& msg) {
+    auto chatMessage = std::get<ClientChatMessage>(msg.payload).message;
+    auto senderId = msg.senderId;
+
+    if (!isClientValid(senderId)) {
+        // TODO: also log the state of the client and client data
+        spdlog::warn("Received ClientChatMessage from invalid client: {}", senderId);
+        return;
+    }
+
+    spdlog::info("Received message: [{}] {}", senderId, chatMessage);
+
+    // TODO: add timestamp into the message
+    ServerChatMessage serverMsg{senderId, chatMessage}; 
+    broadcastMessage(serverMsg);
+}
+
+void Server::handleClientConnectionRequest(const ClientBaseMessage& msg) {
+    auto roomId = std::get<ClientConnectionRequest>(msg.payload).roomId;
+    auto senderId = msg.senderId;
+    
+    // if we have a new client, initialize them
+    if (!d_clients.contains(senderId)) {
+        spdlog::info("New client created, name: {}", senderId);       
+        d_clients.insert(senderId);
+        d_clientData[senderId] = Client{};
+    }
+
+    if (validRoomId(roomId) && d_clientData[senderId].room != roomId) {
+        addClientToRoom(senderId, roomId);
+        spdlog::info("Client {} connected to room: {}", senderId, roomId);
+        sendConnectionResponse(senderId, true, std::nullopt);
+        //TODO: should broadcast to all clients in the room that a new client has connected
+
+    } else if (!validRoomId(roomId)) {
+        spdlog::warn("Client {} attempted to connect to invalid room {}", senderId, roomId);
+        sendConnectionResponse(senderId, false, "Invalid room ID");
+    } else {
+        // TODO: bug herem if client closes app and then re-opens they will try to connect to the same room twice
+        // so need some exit message or heartbeat to remove client from room
+        spdlog::warn("Client {} attempted to connect to room {} that they are already in", senderId, roomId);
+        sendConnectionResponse(senderId, false, "Already in room");
+    } 
+}
+
+void Server::handleClientCreateRoomRequest(const ClientBaseMessage& msg) {
+    auto roomId = std::get<ClientCreateRoomRequest>(msg.payload).roomId;
+    auto senderId = msg.senderId;
+
+
+    if (validRoomId(roomId)) {
+        spdlog::warn("Client {} attempted to create room that already exists: {}", senderId, roomId);
+        sendCreateRoomResponse(senderId, false, "Room already exists");
+        return;
+    }
+   
+    // if we have a new client, initialize them
+    if (!d_clients.contains(senderId)) {
+        spdlog::info("New client created, name: {}", senderId);       
+        d_clients.insert(senderId);
+        d_clientData[senderId] = Client{};
+    }
+
+    createRoom(roomId);
+    addClientToRoom(senderId, roomId);
+    spdlog::info("Client {} created and connected to new room: {}", senderId, roomId);
+    sendCreateRoomResponse(senderId, true, std::nullopt);
+}
+
+// NETWORKING FUNCTIONS
 
 void Server::broadcastNewConnection(const std::string& id) {
     ServerChatMessage serverMsg{"ALERT", "New client connected: " + id};
@@ -84,7 +152,10 @@ void Server::broadcastMessage(const ServerChatMessage& message) {
         return;
     }
 
-    for (const auto& client : d_clients) {
+    auto senderRoomId = d_clientData[message.senderId].room;
+    auto& room = d_rooms[senderRoomId];
+
+    for (const auto& client : room.clients) {
         if (client == message.senderId) {
             continue;
         }
@@ -93,6 +164,9 @@ void Server::broadcastMessage(const ServerChatMessage& message) {
         routerSocket.send(id, zmq::send_flags::sndmore);
         routerSocket.send(msg, zmq::send_flags::none);
     }
+
+    // save message to room history
+    room.history.push_back(message);
 }
 
 void Server::sendConnectionResponse(const std::string& id, bool accepted, const std::optional<std::string>& reason) {
@@ -101,6 +175,21 @@ void Server::sendConnectionResponse(const std::string& id, bool accepted, const 
     auto serialized = serialize_serverbasemsg(baseMessage);
     if (!serialized.has_value()) {
         spdlog::error("Failed to serialize message in Server::sendConnectionResponse");
+        return;
+    }
+
+    zmq::message_t idMsg(id);
+    zmq::message_t msg(*serialized);
+    routerSocket.send(idMsg, zmq::send_flags::sndmore);
+    routerSocket.send(msg, zmq::send_flags::none);
+}
+
+void Server::sendCreateRoomResponse(const std::string& id, bool accepted, const std::optional<std::string>& reason) {
+    ServerCreateRoomResponse response{accepted, reason};
+    ServerBaseMessage baseMessage{response};
+    auto serialized = serialize_serverbasemsg(baseMessage);
+    if (!serialized.has_value()) {
+        spdlog::error("Failed to serialize message in Server::sendCreateRoomResponse");
         return;
     }
 

@@ -1,6 +1,7 @@
 /*
-
 Types of Messages:
+
+--- Client Messages ---
 
 Base Client Message:
 - sender ID
@@ -8,12 +9,12 @@ Base Client Message:
 
 Messages Clients can send:
 1. Connection Request
-technically empty
+- room ID (string)
 
 2. Chat Message
 -  message
 
-Messages Server can send:
+--- Messages Server can send ---
 
 Base Server Message:
 - payload (variant)
@@ -41,8 +42,12 @@ struct ClientChatMessage {
     std::string message;
 };
 
-class ClientConnectionRequest { 
-    // empty
+struct ClientConnectionRequest { 
+    std::string roomId;
+};
+
+struct ClientCreateRoomRequest {
+    std::string roomId;
 };
 
 struct ClientBaseMessage {
@@ -50,7 +55,7 @@ struct ClientBaseMessage {
     using serialize = zpp::bits::members<2>;
     
     std::string senderId;
-    std::variant<ClientConnectionRequest, ClientChatMessage> payload;
+    std::variant<ClientConnectionRequest, ClientChatMessage, ClientCreateRoomRequest> payload;
 };
 
 
@@ -69,8 +74,16 @@ struct ServerConnectionResponse {
     std::optional<std::string> reason;
 };
 
+struct ServerCreateRoomResponse {
+    // 2 members to serialize
+    using serialize = zpp::bits::members<2>;
+
+    bool accepted;
+    std::optional<std::string> reason;
+};
+
 struct ServerBaseMessage {
-    std::variant<ServerConnectionResponse, ServerChatMessage> payload;
+    std::variant<ServerChatMessage, ServerConnectionResponse, ServerCreateRoomResponse> payload;
 };
 
 // --- Serialization/Deserialization Of Base Messages ---

@@ -13,6 +13,7 @@ int main(int argc, const char *argv[]){
     spdlog::info("server.m is running");
 
     Server server("tcp://*:8888");
+    server.createRoom("general");
 
     server.run();
 

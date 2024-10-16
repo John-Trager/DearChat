@@ -19,7 +19,9 @@ public:
 
     void send(const std::string& message);
 
-    void connectToServer();
+    void connectToServer(const std::string& roomId);
+
+    void sendCreateRoomRequest(const std::string& roomId);
     
     void agent();
     
