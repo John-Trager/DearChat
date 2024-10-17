@@ -6,10 +6,15 @@ A chat client using DearImGui, zpp_bits, and zeromq.
     <i>Two chat clients talking to each other</i>
 </p>
 
+## Features
+- A "general" community chat room, that all users join by default
+- Create Custom Chat Rooms
+- Join Chat Rooms
 
 ## Developer stuff
 
 ### Build Instructions
+Clone the repo and cd into its root then:
 ```
 mkdir build
 cd build
@@ -17,14 +22,14 @@ cmake ..
 make -j10
 ```
 
-Run Client GUI
-```
-./client_gui <name of client>
-```
-
 Run Server
 ```
 ./server
+```
+
+Run Client GUI
+```
+./client_gui <name of client>
 ```
 
 ### Known Bugs
