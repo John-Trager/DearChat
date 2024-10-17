@@ -14,7 +14,10 @@ Client::Client(const std::string& address, const std::string& id)
 , d_context(1)
 , d_sender(d_context, ZMQ_PAIR)
 , d_agentDone(false)
-, console([this](const std::string& message) { send(message); })
+, console([this](const std::string& message) { send(message); }, 
+          [this](const std::string& roomId) { connectToServer(roomId); },
+          [this](const std::string& roomId) { sendCreateRoomRequest(roomId); }
+          )
 {
     d_sender.bind(s_inprocAddr);
     d_agentThread = std::thread(&Client::agent, this);
