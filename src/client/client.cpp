@@ -1,5 +1,4 @@
 #include "client.h"
-#include "messaging.h"
 
 #include <zmq.hpp>
 #include <zmq.h>
@@ -167,7 +166,8 @@ void Client::agent() {
                     auto& message = std::get<ServerConnectionResponse>(payload);
                     if (message.accepted) {
                         spdlog::info("Connection accepted by server");
-                        console.AddLog("--- Connection accepted by server ---"); 
+                        console.AddLog("--- Connection accepted by server ---");
+                        putHistoryOnConsole(message.chatHistory); 
                     } else {
                         spdlog::warn("Connection rejected by server: {}", message.reason.value_or("No reason given"));
                         console.AddLog("--- Connection to server Refused! ---"); 
@@ -194,4 +194,16 @@ void Client::agent() {
     // cleanup
     dealer.close();
     forwarder.close();
+}
+
+void Client::putHistoryOnConsole(const std::vector<ServerChatMessage>& history) {
+    for (const auto& message : history) {
+        std::string messageLine;
+        if (d_clientId == message.senderId) {
+            messageLine = "[ME] " + message.message;
+        } else {
+            messageLine = "[" + message.senderId + "] " + message.message;
+        }
+        console.AddLog(messageLine);
+    }
 }

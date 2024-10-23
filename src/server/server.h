@@ -47,7 +47,7 @@ public:
     // NETWORKING FUNCTIONS
 
     void broadcastNewConnection(const std::string& id);
-    void sendConnectionResponse(const std::string& id, bool accepted, const std::optional<std::string>& reason);
+    void sendConnectionResponse(const std::string& id, bool accepted, const std::optional<std::string>& reason, const std::vector<ServerChatMessage>& history);
     void sendCreateRoomResponse(const std::string& id, bool accepted, const std::optional<std::string>& reason);
 
     std::optional<ClientBaseMessage> receiveMessage();

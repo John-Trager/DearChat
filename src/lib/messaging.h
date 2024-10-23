@@ -67,11 +67,12 @@ struct ServerChatMessage {
 };
 
 struct ServerConnectionResponse {
-    // 2 members to serialize
-    using serialize = zpp::bits::members<2>;
+    // 3 members to serialize
+    using serialize = zpp::bits::members<3>;
 
     bool accepted;
     std::optional<std::string> reason;
+    std::vector<ServerChatMessage> chatHistory; 
 };
 
 struct ServerCreateRoomResponse {

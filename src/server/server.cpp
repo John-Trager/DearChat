@@ -68,17 +68,19 @@ void Server::handleClientConnectionRequest(const ClientBaseMessage& msg) {
     if (validRoomId(roomId) && d_clientData[senderId].room != roomId) {
         addClientToRoom(senderId, roomId);
         spdlog::info("Client {} connected to room: {}", senderId, roomId);
-        sendConnectionResponse(senderId, true, std::nullopt);
+
+        auto& history = d_rooms[roomId].history;
+        sendConnectionResponse(senderId, true, std::nullopt, history);
         //TODO: should broadcast to all clients in the room that a new client has connected
 
     } else if (!validRoomId(roomId)) {
         spdlog::warn("Client {} attempted to connect to invalid room {}", senderId, roomId);
-        sendConnectionResponse(senderId, false, "Invalid room ID");
+        sendConnectionResponse(senderId, false, "Invalid room ID", {});
     } else {
         // TODO: bug herem if client closes app and then re-opens they will try to connect to the same room twice
         // so need some exit message or heartbeat to remove client from room
         spdlog::warn("Client {} attempted to connect to room {} that they are already in", senderId, roomId);
-        sendConnectionResponse(senderId, false, "Already in room");
+        sendConnectionResponse(senderId, false, "Already in room", {});
     } 
 }
 
@@ -169,8 +171,8 @@ void Server::broadcastMessage(const ServerChatMessage& message) {
     room.history.push_back(message);
 }
 
-void Server::sendConnectionResponse(const std::string& id, bool accepted, const std::optional<std::string>& reason) {
-    ServerConnectionResponse response{accepted, reason};
+void Server::sendConnectionResponse(const std::string& id, bool accepted, const std::optional<std::string>& reason, const std::vector<ServerChatMessage>& history) {
+    ServerConnectionResponse response{accepted, reason, history};
     ServerBaseMessage baseMessage{response};
     auto serialized = serialize_serverbasemsg(baseMessage);
     if (!serialized.has_value()) {

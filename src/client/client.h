@@ -2,6 +2,7 @@
 
 #include "spdlog/spdlog.h"
 #include "console.h"
+#include "messaging.h"
 
 #include <string>
 // enable drafts for zmq::poller_t
@@ -42,5 +43,7 @@ public:
 
     std::string d_clientId;
     const std::string d_serverAddr;
+
+    void putHistoryOnConsole(const std::vector<ServerChatMessage>& history);
 
 };
